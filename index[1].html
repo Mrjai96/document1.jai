@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AxiomSheet — Conversational Symbolic Document Q&A</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Multi-format client-side document decoders -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg-canvas: #eef2f6;
+            --bg-pane: #ffffff;
+            --bg-subtle: #f8fafc;
+            --bg-chat: #f1f5f9;
+            --ink-primary: #0f172a;
+            --ink-secondary: #475569;
+            --ink-muted: #64748b;
+            --border: #cbd5e1;
+            --border-light: #e2e8f0;
+            --indigo: #4f46e5;
+            --indigo-hover: #4338ca;
+            --indigo-soft: #eef2ff;
+            --indigo-border: #c7d2fe;
+            --emerald: #059669;
+            --emerald-soft: #ecfdf5;
+            --amber: #d97706;
+            --amber-soft: #fffbeb;
+            --rose: #e11d48;
+            --rose-soft: #fff1f2;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background: var(--bg-canvas);
+            color: var(--ink-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Compact Command Header */
+        header {
+            background: var(--bg-pane);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        .brand-logo {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .brand-wrap h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--ink-primary);
+        }
+
+        .header-badges {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-chip {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-light);
+            padding: 0.28rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--ink-secondary);
+        }
+
+        .stat-chip strong {
+            color: var(--indigo);
+        }
+
+        .eval-trigger {
+            background: var(--indigo);
+            color: #ffffff;
+            border: none;
+            padding: 0.4rem 0.85rem;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .eval-trigger:hover {
+            background: var(--indigo-hover);
+        }
+
+        /* Split-Screen Studio Layout */
+        .studio-grid {
+            display: grid;
+            grid-template-columns: 1.05fr 0.95fr;
+            gap: 1rem;
+            padding: 1rem;
+            max-width: 1380px;
+            width: 100%;
+            margin: 0 auto;
+            flex: 1;
+        }
+
+        .pane {
+            background: var(--bg-pane);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+            min-height: calc(100vh - 82px);
+        }
+
+        /* Left Pane: Conversational Q&A Feed */
+        .pane-bar {
+            padding: 0.85rem 1.1rem;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .pane-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--ink-primary);
+        }
+
+        .clear-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--ink-secondary);
+            padding: 0.28rem 0.65rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .clear-btn:hover {
+            background: #ffffff;
+            color: var(--ink-primary);
+        }
+
+        .chat-stream {
+            flex: 1;
+            padding: 1.1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.95rem;
+            background: var(--bg-chat);
+            max-height: calc(100vh - 255px);
+        }
+
+        .msg {
+            max-width: 90%;
+            border-radius: var(--radius-md);
+            padding: 0.85rem 1rem;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            animation: popIn 0.18s ease;
+        }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-user {
+            align-self: flex-end;
+            background: var(--indigo);
+            color: #ffffff;
+            border-bottom-right-radius: 4px;
+            font-weight: 500;
+        }
+
+        .msg-bot {
+            align-self: flex-start;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+            color: var(--ink-primary);
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+        }
+
+        .msg-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.45rem;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 0.16rem 0.5rem;
+            border-radius: 5px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: var(--bg-subtle);
+            color: var(--ink-secondary);
+        }
+
+        .pill-indigo { background: var(--indigo-soft); color: var(--indigo); }
+        .pill-emerald { background: var(--emerald-soft); color: var(--emerald); }
+        .pill-amber { background: var(--amber-soft); color: var(--amber); }
+        .pill-rose { background: var(--rose-soft); color: var(--rose); }
+
+        .proof-drawer {
+            margin-top: 0.65rem;
+            border-top: 1px dashed var(--border);
+            padding-top: 0.5rem;
+            font-size: 0.78rem;
+            color: var(--ink-secondary);
+        }
+
+        .proof-drawer summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--indigo);
+            user-select: none;
+        }
+
+        .proof-steps {
+            margin-top: 0.4rem;
+            background: var(--bg-subtle);
+            padding: 0.55rem 0.75rem;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.74rem;
+            line-height: 1.55;
+        }
+
+        /* Quick Prompt Bar & Chat Input */
+        .composer-area {
+            padding: 0.85rem 1rem;
+            background: var(--bg-pane);
+            border-top: 1px solid var(--border-light);
+        }
+
+        .quick-strip {
+            display: flex;
+            gap: 0.4rem;
+            overflow-x: auto;
+            padding-bottom: 0.55rem;
+            margin-bottom: 0.55rem;
+        }
+
+        .q-chip {
+            white-space: nowrap;
+            background: var(--indigo-soft);
+            border: 1px solid var(--indigo-border);
+            color: var(--indigo);
+            padding: 0.3rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .q-chip:hover {
+            background: var(--indigo);
+            color: #ffffff;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.68rem 0.85rem;
+            font-size: 0.86rem;
+            color: var(--ink-primary);
+            background: var(--bg-subtle);
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--indigo);
+            background: #ffffff;
+        }
+
+        .send-btn {
+            background: var(--indigo);
+            color: #ffffff;
+            border: none;
+            padding: 0 1.15rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .send-btn:hover {
+            background: var(--indigo-hover);
+        }
+
+        /* Right Pane: Segmented Knowledge Inspector */
+        .seg-tabs {
+            display: flex;
+            gap: 0.3rem;
+            background: var(--bg-chat);
+            padding: 0.25rem;
+            border-radius: 8px;
+        }
+
+        .seg-btn {
+            border: none;
+            background: transparent;
+            padding: 0.35rem 0.7rem;
+            border-radius: 6px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--ink-secondary);
+            cursor: pointer;
+        }
+
+        .seg-btn.active {
+            background: #ffffff;
+            color: var(--indigo);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .inspector-body {
+            padding: 1rem;
+            flex: 1;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .inspector-body.active {
+            display: block;
+        }
+
+        .drop-box {
+            border: 1.5px dashed var(--border);
+            background: var(--bg-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.85rem;
+            text-align: center;
+            margin-bottom: 0.8rem;
+        }
+
+        .drop-box.dragover, .drop-box:hover {
+            border-color: var(--indigo);
+            background: var(--indigo-soft);
+        }
+
+        .drop-box p {
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .drop-box span {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--ink-muted);
+            margin-bottom: 0.55rem;
+        }
+
+        .upload-lbl {
+            display: inline-block;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            padding: 0.38rem 0.85rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        input[type="file"] { display: none; }
+
+        textarea {
+            height: 230px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .btn-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.75rem;
+        }
+
+        .btn-sec {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            color: var(--ink-primary);
+            padding: 0.52rem 0.9rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-sec:hover { background: #e2e8f0; }
+
+        .notice {
+            margin-top: 0.65rem;
+            padding: 0.45rem 0.7rem;
+            border-radius: 6px;
+            font-size: 0.77rem;
+            background: var(--emerald-soft);
+            color: var(--emerald);
+            font-weight: 500;
+        }
+
+        .notice.err {
+            background: var(--rose-soft);
+            color: var(--rose);
+        }
+
+        /* Facts & Topics inside Inspector */
+        .table-wrap {
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            overflow: auto;
+            max-height: 440px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        th {
+            background: var(--bg-subtle);
+            color: var(--ink-muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 0.55rem 0.7rem;
+            position: sticky;
+            top: 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 0.55rem 0.7rem;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--ink-secondary);
+        }
+
+        .topic-item {
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 0.85rem;
+            margin-bottom: 0.75rem;
+            background: var(--bg-subtle);
+        }
+
+        .topic-item h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.92rem;
+            color: var(--indigo);
+            margin-bottom: 0.45rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .prop-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.79rem;
+            padding: 0.22rem 0;
+            border-bottom: 1px dotted var(--border);
+        }
+
+        .prop-row:last-child { border-bottom: none; }
+
+        /* Modal for Accuracy Evaluation */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.55);
+            z-index: 80;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+        }
+
+        .modal-card {
+            background: #ffffff;
+            border-radius: var(--radius-lg);
+            max-width: 820px;
+            width: 100%;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+        }
+
+        .modal-head {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 1.15rem;
+            overflow-y: auto;
+        }
+
+        @media (max-width: 900px) {
+            .studio-grid {
+                grid-template-columns: 1fr;
+            }
+            .pane {
+                min-height: auto;
+            }
+            .chat-stream {
+                max-height: 360px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand-wrap">
+        <div class="brand-logo">A</div>
+        <div>
+            <h1>AxiomSheet</h1>
+        </div>
+    </div>
+
+    <div class="header-badges">
+        <span class="stat-chip">Topics: <strong id="c-topics">0</strong></span>
+        <span class="stat-chip">Facts: <strong id="c-facts">0</strong></span>
+        <span class="stat-chip">Rules: <strong id="c-rules">0</strong></span>
+        <span class="stat-chip">Deduced: <strong id="c-deduced">0</strong></span>
+        <button class="eval-trigger" onclick="openEvalModal()">Run Accuracy Test</button>
+    </div>
+</header>
+
+<div class="studio-grid">
+    <!-- LEFT PANE: CONVERSATIONAL Q&A INTERFACE -->
+    <section class="pane">
+        <div class="pane-bar">
+            <span class="pane-title">Document Q&amp;A Assistant</span>
+            <button class="clear-btn" onclick="resetChat()">Clear Chat</button>
+        </div>
+
+        <div class="chat-stream" id="chat-feed"></div>
+
+        <div class="composer-area">
+            <div class="quick-strip">
+                <span class="q-chip" onclick="sendPreset('What is the Power Source of Autonomous Solar Rover?')">Power Source?</span>
+                <span class="q-chip" onclick="sendPreset('Where is Autonomous Solar Rover located?')">Location?</span>
+                <span class="q-chip" onclick="sendPreset('What does LiDAR Scanner require?')">LiDAR Requirement?</span>
+                <span class="q-chip" onclick="sendPreset('How is LiDAR Scanner related to Autonomous Solar Rover?')">How are they linked?</span>
+                <span class="q-chip" onclick="sendPreset('What is Dust Storm Event?')">Dust Storm Rule</span>
+                <span class="q-chip" onclick="sendPreset('What is Autonomous Solar Rover?')">Rover Rule</span>
+            </div>
+
+            <div class="input-row">
+                <input type="text" id="chat-input" placeholder="Ask a question about your uploaded document..." onkeydown="if(event.key==='Enter') submitChat()">
+                <button class="send-btn" onclick="submitChat()">Ask</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- RIGHT PANE: DOCUMENT & KNOWLEDGE INSPECTOR -->
+    <section class="pane">
+        <div class="pane-bar">
+            <span class="pane-title">Knowledge Studio</span>
+            <div class="seg-tabs">
+                <button class="seg-btn active" onclick="switchInspector('tab-source', this)">Document</button>
+                <button class="seg-btn" onclick="switchInspector('tab-facts', this)">Facts Table</button>
+                <button class="seg-btn" onclick="switchInspector('tab-topics', this)">Topics</button>
+            </div>
+        </div>
+
+        <!-- Inspector 1: Document Upload & Editor -->
+        <div id="tab-source" class="inspector-body active">
+            <div class="drop-box" id="drop-zone">
+                <p>Drop a file here or choose from your device</p>
+                <span>Supports PDF, Word (.docx), Excel (.xlsx), CSV, JSON, XML, HTML &amp; TXT</span>
+                <label for="file-upload" class="upload-lbl">Upload Document</label>
+                <input type="file" id="file-upload" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.tsv,.json,.xml,.html,.htm,.txt,.md,.log,.yaml,.yml" onchange="onFileChoose(event)">
+            </div>
+
+            <textarea id="source-editor" placeholder="Enter facts or IF-THEN rules..."></textarea>
+
+            <div class="btn-bar">
+                <button class="send-btn" style="padding: 0.52rem 1rem;" onclick="rebuildKB()">Update Knowledge</button>
+                <button class="btn-sec" onclick="loadSample()">Sample Notes</button>
+                <button class="btn-sec" onclick="loadJSONSample()">Sample JSON</button>
+            </div>
+
+            <div id="kb-status" class="notice">Ready — Sample document loaded.</div>
+        </div>
+
+        <!-- Inspector 2: Searchable Facts Table -->
+        <div id="tab-facts" class="inspector-body">
+            <input type="text" id="fact-search" placeholder="Search saved facts..." style="margin-bottom: 0.7rem;" oninput="renderFacts()">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Topic</th>
+                            <th>Relation</th>
+                            <th>Detail</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facts-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Inspector 3: Topic Cards -->
+        <div id="tab-topics" class="inspector-body">
+            <div id="topics-list"></div>
+        </div>
+    </section>
+</div>
+
+<!-- Accuracy Evaluation Modal -->
+<div class="modal-backdrop" id="eval-modal" onclick="if(event.target===this) closeEvalModal()">
+    <div class="modal-card">
+        <div class="modal-head">
+            <span class="pane-title">7-Case Accuracy Benchmark</span>
+            <button class="clear-btn" onclick="closeEvalModal()">Close</button>
+        </div>
+        <div class="modal-body">
+            <div id="eval-score" class="notice" style="margin-top: 0; margin-bottom: 0.85rem; font-weight: 700;"></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Expected</th>
+                            <th>Answer</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eval-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+if (typeof pdfjsLib !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+function esc(str) {
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const SAMPLE_NOTES = `# Autonomous Solar Rover
+Category: Planetary Exploration Robot
+Power Source: Solar Array
+Primary Sensor: LiDAR Scanner
+Autonomous Solar Rover is located in Jezero Crater.
+Autonomous Solar Rover uses RTG Backup Battery.
+
+# LiDAR Scanner
+LiDAR Scanner is part of Navigation Subsystem.
+Navigation Subsystem is part of Autonomous Solar Rover.
+LiDAR Scanner requires 24V DC Power.
+Purpose: 3D Terrain Mapping
+
+# Dust Storm Event
+Dust Storm Event causes Solar Output Drop.
+Solar Output Drop requires RTG Backup Battery.
+
+# Logic Rules
+IF ?X causes Solar Output Drop THEN ?X is Critical Hazard
+IF ?X uses RTG Backup Battery THEN ?X is All-Weather Capable`;
+
+const SAMPLE_JSON = JSON.stringify({
+    "Autonomous Solar Rover": {
+        "Category": "Planetary Exploration Robot",
+        "Power Source": "Solar Array",
+        "location": "Jezero Crater",
+        "uses": "RTG Backup Battery"
+    },
+    "LiDAR Scanner": {
+        "part_of": "Navigation Subsystem",
+        "requires": "24V DC Power",
+        "Purpose": "3D Terrain Mapping"
+    },
+    "Navigation Subsystem": {
+        "part_of": "Autonomous Solar Rover"
+    },
+    "Dust Storm Event": {
+        "causes": "Solar Output Drop"
+    },
+    "Rules": [
+        "IF ?X causes Solar Output Drop THEN ?X is Critical Hazard",
+        "IF ?X uses RTG Backup Battery THEN ?X is All-Weather Capable"
+    ]
+}, null, 2);
+
+class DocumentDecoder {
+    static async read(file) {
+        if (!file) throw new Error("No file selected.");
+        const ext = file.name.toLowerCase().split(".").pop();
+        if (ext === "pdf") return await this.readPDF(file);
+        if (ext === "docx") return await this.readDOCX(file);
+        if (ext === "doc") throw new Error("Old .doc files are not supported. Save as .docx or .pdf.");
+        if (ext === "xlsx" || ext === "xls") return await this.readExcel(file);
+        if (ext === "csv" || ext === "tsv") return this.readCSV(await file.text(), ext === "tsv" ? "\t" : ",");
+        if (ext === "json") return this.readJSON(await file.text());
+        if (ext === "xml" || ext === "html" || ext === "htm") return this.readMarkup(await file.text(), ext === "xml");
+        return await file.text();
+    }
+
+    static async readPDF(file) {
+        if (typeof pdfjsLib === "undefined") throw new Error("PDF reader unavailable offline.");
+        const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+        let pages = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            let lastY = null, line = "", lines = [];
+            for (const item of content.items) {
+                const y = item.transform ? Math.round(item.transform[5]) : null;
+                if (lastY !== null && y !== null && Math.abs(y - lastY) > 4) {
+                    if (line.trim()) lines.push(line.trim());
+                    line = item.str;
+                } else {
+                    line += (line && !line.endsWith(" ") ? " " : "") + item.str;
+                }
+                lastY = y;
+            }
+            if (line.trim()) lines.push(line.trim());
+            pages.push(lines.join("\n"));
+        }
+        const out = pages.join("\n").trim();
+        if (!out) throw new Error("Scanned PDF has no selectable text.");
+        return out;
+    }
+
+    static async readDOCX(file) {
+        if (typeof mammoth === "undefined") throw new Error("Word reader unavailable offline.");
+        const res = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        const out = (res.value || "").trim();
+        if (!out) throw new Error("Word document is empty.");
+        return out;
+    }
+
+    static async readExcel(file) {
+        if (typeof XLSX === "undefined") throw new Error("Spreadsheet reader unavailable offline.");
+        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        let lines = [];
+        wb.SheetNames.forEach(s => {
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[s], { defval: "" });
+            rows.forEach((r, idx) => {
+                const keys = Object.keys(r);
+                if (keys.length === 3 && keys.map(k => k.toLowerCase()).includes("subject")) {
+                    lines.push(`${r[keys[0]]} | ${r[keys[1]]} | ${r[keys[2]]}`);
+                } else if (keys.length >= 2) {
+                    lines.push(`# ${String(r[keys[0]] || `Record ${idx + 1}`).trim()}`);
+                    keys.slice(1).forEach(k => { if (String(r[k]).trim()) lines.push(`${k}: ${r[k]}`); });
+                }
+            });
+        });
+        return lines.join("\n");
+    }
+
+    static splitCSV(line, sep) {
+        const res = []; let cur = "", q = false;
+        for (const c of line) {
+            if (c === '"') q = !q;
+            else if (c === sep && !q) { res.push(cur.trim()); cur = ""; }
+            else cur += c;
+        }
+        res.push(cur.trim());
+        return res;
+    }
+
+    static readCSV(raw, sep) {
+        const rows = raw.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+        if (rows.length < 2) return raw;
+        const headers = this.splitCSV(rows[0], sep);
+        let lines = [];
+        for (let i = 1; i < rows.length; i++) {
+            const cols = this.splitCSV(rows[i], sep);
+            if (cols.length >= 2) {
+                lines.push(`# ${cols[0] || `Row ${i}`}`);
+                for (let j = 1; j < headers.length; j++) if (cols[j]) lines.push(`${headers[j]}: ${cols[j]}`);
+            }
+        }
+        return lines.join("\n");
+    }
+
+    static readJSON(raw) {
+        const obj = JSON.parse(raw);
+        let lines = [];
+        const walk = (node, topic) => {
+            if (Array.isArray(node)) {
+                node.forEach(item => {
+                    if (typeof item === "string") lines.push(/^IF\s+/i.test(item) ? item : `${topic}: ${item}`);
+                    else if (item && typeof item === "object") walk(item, topic);
+                });
+            } else if (node && typeof node === "object") {
+                for (const [k, v] of Object.entries(node)) {
+                    if (v && typeof v === "object" && !Array.isArray(v)) { lines.push(`# ${k}`); walk(v, k); }
+                    else if (Array.isArray(v)) {
+                        if (k.toLowerCase() === "rules") v.forEach(r => lines.push(String(r)));
+                        else v.forEach(val => lines.push(`${k}: ${val}`));
+                    } else lines.push(`${k}: ${v}`);
+                }
+            }
+        };
+        walk(obj, "Document");
+        return lines.join("\n");
+    }
+
+    static readMarkup(raw, isXML) {
+        const doc = new DOMParser().parseFromString(raw, isXML ? "text/xml" : "text/html");
+        if (doc.querySelector("parsererror")) throw new Error("Malformed XML/HTML markup.");
+        let lines = [];
+        if (!isXML) {
+            doc.querySelectorAll("h1, h2, h3, h4, p, li, tr").forEach(el => {
+                const tag = el.tagName.toLowerCase();
+                const txt = el.textContent.replace(/\s+/g, " ").trim();
+                if (!txt) return;
+                if (tag.startsWith("h")) lines.push(`# ${txt}`);
+                else if (tag === "tr") {
+                    const cells = Array.from(el.querySelectorAll("td, th")).map(c => c.textContent.trim());
+                    if (cells.length >= 2) lines.push(`${cells[0]}: ${cells.slice(1).join(" - ")}`);
+                } else lines.push(txt);
+            });
+        } else {
+            const walk = el => {
+                const kids = Array.from(el.children);
+                if (!kids.length) { const v = el.textContent.trim(); if (v) lines.push(`${el.tagName}: ${v}`); }
+                else { lines.push(`# ${el.getAttribute("name") || el.getAttribute("id") || el.tagName}`); kids.forEach(walk); }
+            };
+            if (doc.documentElement) walk(doc.documentElement);
+        }
+        return lines.join("\n");
+    }
+}
+
+class RuleReasoner {
+    constructor() {
+        this.topics = {};
+        this.facts = [];
+        this.rules = [];
+        this.deduced = [];
+    }
+
+    reset() {
+        this.topics = {}; this.facts = []; this.rules = []; this.deduced = [];
+    }
+
+    addFact(s, r, d, deduced = false) {
+        const subj = String(s || "").trim();
+        const rel = String(r || "").trim().toLowerCase();
+        const det = String(d || "").trim().replace(/\.$/, "");
+        if (!subj || !rel || !det) return;
+
+        if (!this.facts.some(f => f.s.toLowerCase() === subj.toLowerCase() && f.r === rel && f.d.toLowerCase() === det.toLowerCase())) {
+            this.facts.push({ s: subj, r: rel, d: det, deduced });
+            if (deduced) this.deduced.push({ s: subj, r: rel, d: det });
+        }
+        const k = subj.toLowerCase();
+        if (!this.topics[k]) this.topics[k] = { name: subj, details: {} };
+        if (!this.topics[k].details[rel]) this.topics[k].details[rel] = [];
+        if (!this.topics[k].details[rel].includes(det)) this.topics[k].details[rel].push(det);
+    }
+
+    parseClause(txt) {
+        const clean = txt.trim().replace(/\.$/, "");
+        const verbs = [" is ", " has ", " requires ", " causes ", " uses ", " part_of ", " produces ", " enables ", " supports ", " subset_of "];
+        for (const v of verbs) {
+            const i = clean.toLowerCase().indexOf(v);
+            if (i !== -1) return { s: clean.slice(0, i).trim(), r: v.trim().toLowerCase(), d: clean.slice(i + v.length).trim() };
+        }
+        return null;
+    }
+
+    load(raw) {
+        this.reset();
+        let text = (raw || "").trim();
+        if (!text) return;
+        if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
+            try { text = DocumentDecoder.readJSON(text); } catch (e) {}
+        }
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        let curTopic = "General Notes";
+
+        const patterns = [
+            { rx: /^(.+?)\s+is\s+defined\s+as\s+(.+)$/i, rel: "definition" },
+            { rx: /^(.+?)\s+is\s+located\s+in\s+(.+)$/i, rel: "location" },
+            { rx: /^(.+?)\s+is\s+part\s+of\s+(.+)$/i, rel: "part_of" },
+            { rx: /^(.+?)\s+is\s+a\s+subset\s+of\s+(.+)$/i, rel: "subset_of" },
+            { rx: /^(.+?)\s+requires\s+(.+)$/i, rel: "requires" },
+            { rx: /^(.+?)\s+uses\s+(.+)$/i, rel: "uses" },
+            { rx: /^(.+?)\s+produces\s+(.+)$/i, rel: "produces" },
+            { rx: /^(.+?)\s+causes\s+(.+)$/i, rel: "causes" },
+            { rx: /^(.+?)\s+enables\s+(.+)$/i, rel: "enables" },
+            { rx: /^(.+?)\s+supports\s+(.+)$/i, rel: "supports" },
+            { rx: /^(.+?)\s+has\s+(.+)$/i, rel: "has" },
+            { rx: /^(.+?)\s+is\s+a\s+(.+)$/i, rel: "category" },
+            { rx: /^(.+?)\s+is\s+(.+)$/i, rel: "is" }
+        ];
+
+        for (const line of lines) {
+            const rm = line.match(/^IF\s+(.+?)\s+THEN\s+(.+)$/i);
+            if (rm) {
+                const a = this.parseClause(rm[1]), c = this.parseClause(rm[2]);
+                if (a && c) this.rules.push({ if: a, then: c });
+                continue;
+            }
+            const pipe = line.split("|").map(p => p.trim());
+            if (pipe.length === 3 && pipe[0] && pipe[1] && pipe[2]) {
+                this.addFact(pipe[0], pipe[1], pipe[2]);
+                continue;
+            }
+            if (line.startsWith("#") || (line.endsWith(":") && line.split(/\s+/).length <= 6)) {
+                curTopic = line.replace(/^#+/, "").replace(/:$/, "").trim();
+                continue;
+            }
+            const kv = line.match(/^[-*]?\s*([A-Za-z0-9 _/()-]{2,40}):\s*(.+)$/);
+            if (kv) {
+                this.addFact(curTopic, kv[1], kv[2]);
+                continue;
+            }
+            const clean = line.replace(/^[-*\s]+/, "").replace(/\.$/, "");
+            let ok = false;
+            for (const p of patterns) {
+                const m = clean.match(p.rx);
+                if (m) { this.addFact(m[1], p.rel, m[2]); ok = true; break; }
+            }
+            if (!ok) this.addFact(curTopic, "note", clean);
+        }
+        this.runRules();
+    }
+
+    runRules() {
+        let added = true, guard = 0;
+        while (added && guard < 50) {
+            added = false; guard++;
+            for (const rule of this.rules) {
+                for (const f of [...this.facts]) {
+                    if (f.r === rule.if.r && f.d.toLowerCase() === rule.if.d.toLowerCase()) {
+                        const sub = rule.if.s === "?X" ? f.s : rule.if.s;
+                        const target = rule.then.s === "?X" ? sub : rule.then.s;
+                        if (!this.facts.some(x => x.s.toLowerCase() === target.toLowerCase() && x.r === rule.then.r && x.d.toLowerCase() === rule.then.d.toLowerCase())) {
+                            this.addFact(target, rule.then.r, rule.then.d, true);
+                            added = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    findPath(a, b) {
+        const start = a.toLowerCase(), end = b.toLowerCase();
+        const q = [[start, []]], seen = new Set([start]);
+        while (q.length) {
+            const [cur, path] = q.shift();
+            if (cur === end && path.length) return path;
+            for (const f of this.facts) {
+                if (f.s.toLowerCase() === cur) {
+                    const nxt = f.d.toLowerCase();
+                    if (!seen.has(nxt)) {
+                        seen.add(nxt);
+                        q.push([nxt, [...path, `${f.s} (${f.r.replace(/_/g, " ")}) -> ${f.d}`]]);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    answer(query) {
+        const clean = (query || "").trim().replace(/\?+$/, "").trim();
+        const low = clean.toLowerCase();
+        const steps = [];
+        if (!clean) return { found: false, answer: "Please type a question first.", method: "Empty Input", steps: ["No question text entered."], score: 0 };
+        if (!this.facts.length) return { found: false, answer: "No facts loaded yet. Upload a document on the right first.", method: "Empty KB", steps: ["0 facts available."], score: 0 };
+
+        const escRx = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const matched = Object.entries(this.topics)
+            .filter(([k]) => k !== "general notes" && new RegExp(`(^|[^a-z0-9])${escRx(k)}([^a-z0-9]|$)`, "i").test(low))
+            .map(([, v]) => v.name)
+            .sort((a, b) => b.length - a.length);
+
+        if (matched.length >= 2) {
+            const [t1, t2] = matched;
+            steps.push(`Found two topics: "${t1}" and "${t2}".`);
+            const chain = this.findPath(t1, t2) || this.findPath(t2, t1);
+            if (chain) {
+                steps.push("Connected via Breadth-First Search (BFS).");
+                return { found: true, answer: `Yes, they are connected: ${chain.join(" -> ")}.`, method: "Multi-Hop Link Search", steps: [...steps, ...chain], score: 100 };
+            }
+        }
+
+        let targetRels = [];
+        if (/^(what is|define|explain)/i.test(low)) { targetRels = ["definition", "category", "is", "note"]; steps.push("Intent: Definition / Category lookup."); }
+        else if (/^(where|location)/i.test(low)) { targetRels = ["location", "part_of"]; steps.push("Intent: Location lookup."); }
+        else if (/^(why|cause)/i.test(low)) { targetRels = ["causes", "requires"]; steps.push("Intent: Cause / Dependency lookup."); }
+        else if (low.includes("require") || low.includes("need")) { targetRels = ["requires", "uses"]; steps.push("Intent: Requirement lookup."); }
+
+        if (matched.length) {
+            const topic = matched[0];
+            const obj = this.topics[topic.toLowerCase()];
+            steps.push(`Matched topic: "${topic}".`);
+
+            for (const [rel, vals] of Object.entries(obj.details)) {
+                const readable = rel.replace(/_/g, " ");
+                if ((low.includes(rel) || low.includes(readable)) && rel !== "is" && rel !== "has") {
+                    const isRule = vals.some(v => this.deduced.some(df => df.s === topic && df.r === rel && df.d === v));
+                    steps.push(`Matched "${readable}": ${vals.join(", ")}.`);
+                    return { found: true, answer: `The ${readable} of ${topic} is: ${vals.join(", ")}.`, method: isRule ? "Logic Rule Deduction" : "Direct Fact Lookup", steps, score: 100 };
+                }
+            }
+            for (const rel of targetRels) {
+                if (obj.details[rel]) {
+                    const vals = obj.details[rel];
+                    const isRule = vals.some(v => this.deduced.some(df => df.s === topic && df.r === rel && df.d === v));
+                    steps.push(`Matched "${rel.replace(/_/g, " ")}" -> ${vals.join(", ")}.`);
+                    return { found: true, answer: `${topic}: ${vals.join(", ")}.`, method: isRule ? "Logic Rule Deduction" : "Smart Topic Match", steps, score: 95 };
+                }
+            }
+            const summary = Object.entries(obj.details).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v.join(", ")}`);
+            steps.push("Showing full topic summary.");
+            return { found: true, answer: `${topic} — ${summary.join("; ")}.`, method: "Topic Summary", steps, score: 85 };
+        }
+
+        const stop = new Set(["what", "where", "when", "which", "does", "have", "about", "tell", "give", "the", "and", "for"]);
+        const tokens = (low.match(/[a-z0-9]+/g) || []).filter(w => w.length > 3 && !stop.has(w));
+        let best = null, hits = 0;
+        for (const f of this.facts) {
+            const str = `${f.s} ${f.r} ${f.d}`.toLowerCase();
+            const h = tokens.reduce((a, t) => a + (str.includes(t) ? 1 : 0), 0);
+            if (h > hits) { hits = h; best = f; }
+        }
+        if (best && hits > 0) {
+            steps.push(`Matched ${hits} keyword(s) in saved fact.`);
+            return { found: true, answer: `${best.s} ${best.r.replace(/_/g, " ")} ${best.d}.`, method: "Keyword Fact Match", steps, score: Math.min(85, 45 + hits * 15) };
+        }
+        return { found: false, answer: "No matching answer found in your document.", method: "Safe Abstention", steps: ["Checked all topics, facts, and rules; avoided guessing."], score: 0 };
+    }
+
+    benchmark() {
+        const cases = [
+            { q: "What is the Power Source of Autonomous Solar Rover?", exp: "Solar Array" },
+            { q: "Where is Autonomous Solar Rover located?", exp: "Jezero Crater" },
+            { q: "What does LiDAR Scanner require?", exp: "24V DC Power" },
+            { q: "How is LiDAR Scanner related to Autonomous Solar Rover?", exp: "Navigation Subsystem" },
+            { q: "What is Dust Storm Event?", exp: "Critical Hazard" },
+            { q: "What is Autonomous Solar Rover?", exp: "All-Weather Capable" },
+            { q: "What is the fuel capacity of Nuclear Submarine?", exp: "No matching answer" }
+        ];
+        let passed = 0;
+        const rows = cases.map(c => {
+            const r = this.answer(c.q);
+            const ok = r.answer.toLowerCase().includes(c.exp.toLowerCase());
+            if (ok) passed++;
+            return { ...c, actual: r.answer, method: r.method, ok };
+        });
+        return { total: cases.length, passed, pct: Math.round((passed / cases.length) * 100), rows };
+    }
+}
+
+const reasoner = new RuleReasoner();
+
+function switchInspector(id, btn) {
+    document.querySelectorAll(".inspector-body").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".seg-btn").forEach(t => t.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+    btn.classList.add("active");
+}
+
+function setStatus(txt, isErr = false) {
+    const el = document.getElementById("kb-status");
+    el.textContent = txt;
+    el.className = isErr ? "notice err" : "notice";
+}
+
+async function onFileChoose(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    setStatus(`Reading "${file.name}"...`);
+    try {
+        const text = await DocumentDecoder.read(file);
+        document.getElementById("source-editor").value = text;
+        rebuildKB();
+        setStatus(`Loaded "${file.name}" (${reasoner.facts.length} facts).`);
+        appendBotMsg({
+            found: true,
+            answer: `Loaded "${file.name}" with ${reasoner.facts.length} facts across ${Object.keys(reasoner.topics).length} topics. Ask me anything about it!`,
+            method: "Document Loaded",
+            steps: [`Parsed ${file.name} into structured topics and facts.`],
+            score: 100
+        });
+    } catch (e) {
+        setStatus(`Error: ${e.message}`, true);
+    }
+    ev.target.value = "";
+}
+
+function loadSample() {
+    document.getElementById("source-editor").value = SAMPLE_NOTES;
+    rebuildKB();
+    setStatus("Ready — Sample document loaded.");
+}
+
+function loadJSONSample() {
+    document.getElementById("source-editor").value = SAMPLE_JSON;
+    rebuildKB();
+    setStatus("Ready — JSON sample loaded.");
+}
+
+function rebuildKB() {
+    reasoner.load(document.getElementById("source-editor").value);
+    document.getElementById("c-topics").textContent = Object.keys(reasoner.topics).length;
+    document.getElementById("c-facts").textContent = reasoner.facts.length;
+    document.getElementById("c-rules").textContent = reasoner.rules.length;
+    document.getElementById("c-deduced").textContent = reasoner.deduced.length;
+    renderFacts();
+    renderTopics();
+}
+
+function renderFacts() {
+    const q = document.getElementById("fact-search").value.trim().toLowerCase();
+    const tbody = document.getElementById("facts-body");
+    tbody.innerHTML = "";
+    const list = q ? reasoner.facts.filter(f => `${f.s} ${f.r} ${f.d}`.toLowerCase().includes(q)) : reasoner.facts;
+    if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:1rem;">No matching facts.</td></tr>`;
+        return;
+    }
+    list.forEach(f => {
+        const badge = f.deduced ? '<span class="pill pill-amber">Rule Deduced</span>' : '<span class="pill pill-emerald">Direct</span>';
+        tbody.innerHTML += `<tr><td><strong>${esc(f.s)}</strong></td><td><span class="pill">${esc(f.r.replace(/_/g, " "))}</span></td><td>${esc(f.d)}</td><td>${badge}</td></tr>`;
+    });
+}
+
+function renderTopics() {
+    const box = document.getElementById("topics-list");
+    box.innerHTML = "";
+    Object.values(reasoner.topics).forEach(t => {
+        let rows = "";
+        for (const [k, vals] of Object.entries(t.details)) {
+            rows += `<div class="prop-row"><span style="color:var(--ink-muted)">${esc(k.replace(/_/g, " "))}</span><strong>${esc(vals.join(", "))}</strong></div>`;
+        }
+        box.innerHTML += `<div class="topic-item"><h4><span>${esc(t.name)}</span><span class="pill pill-indigo">${Object.keys(t.details).length}</span></h4>${rows}</div>`;
+    });
+}
+
+function appendUserMsg(text) {
+    const feed = document.getElementById("chat-feed");
+    const div = document.createElement("div");
+    div.className = "msg msg-user";
+    div.textContent = text;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+}
+
+function appendBotMsg(res) {
+    const feed = document.getElementById("chat-feed");
+    const div = document.createElement("div");
+    div.className = "msg msg-bot";
+    const pillClass = res.found ? "pill-emerald" : "pill-amber";
+    const scoreTxt = res.found ? `${res.score}% Match` : "Not Found";
+    div.innerHTML = `
+        <div class="msg-meta">
+            <span class="pill ${pillClass}">${esc(res.method)}</span>
+            <span class="pill">${scoreTxt}</span>
+        </div>
+        <div><strong>${esc(res.answer)}</strong></div>
+        <details class="proof-drawer">
+            <summary>View reasoning steps (${res.steps.length})</summary>
+            <div class="proof-steps">${res.steps.map(s => `• ${esc(s)}`).join("<br>")}</div>
+        </details>
+    `;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+}
+
+function sendPreset(q) {
+    document.getElementById("chat-input").value = q;
+    submitChat();
+}
+
+function submitChat() {
+    const inp = document.getElementById("chat-input");
+    const q = inp.value.trim();
+    if (!q) return;
+    appendUserMsg(q);
+    inp.value = "";
+    const res = reasoner.answer(q);
+    appendBotMsg(res);
+}
+
+function resetChat() {
+    const feed = document.getElementById("chat-feed");
+    feed.innerHTML = "";
+    appendBotMsg({
+        found: true,
+        answer: "Hello! Upload any document on the right or tap a sample question below to ask me anything.",
+        method: "Ready",
+        steps: ["Rule-based symbolic engine initialized with 0 NLP/RAG dependencies."],
+        score: 100
+    });
+}
+
+function openEvalModal() {
+    const rep = reasoner.benchmark();
+    document.getElementById("eval-score").textContent = `Benchmark Result: ${rep.passed} / ${rep.total} Passed (${rep.pct}% Accuracy)`;
+    const tbody = document.getElementById("eval-tbody");
+    tbody.innerHTML = "";
+    rep.rows.forEach(r => {
+        const st = r.ok ? '<span class="pill pill-emerald">PASS</span>' : '<span class="pill pill-rose">FAIL</span>';
+        tbody.innerHTML += `<tr><td><strong>${esc(r.q)}</strong></td><td>${esc(r.exp)}</td><td>${esc(r.actual)}</td><td><span class="pill">${esc(r.method)}</span></td><td>${st}</td></tr>`;
+    });
+    document.getElementById("eval-modal").classList.add("open");
+}
+
+function closeEvalModal() {
+    document.getElementById("eval-modal").classList.remove("open");
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+    loadSample();
+    resetChat();
+    const dz = document.getElementById("drop-zone");
+    ["dragenter", "dragover"].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove("dragover"); }));
+    dz.addEventListener("drop", ev => {
+        const f = ev.dataTransfer && ev.dataTransfer.files[0];
+        if (f) {
+            const dt = new DataTransfer();
+            dt.items.add(f);
+            const inp = document.getElementById("file-upload");
+            inp.files = dt.files;
+            onFileChoose({ target: inp });
+        }
+    });
+});
+</script>
+</body>
+</html>
